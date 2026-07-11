@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Einmaleins-Miner (Minecraft-Edition)</title>
+    <!-- Minecraft Schriftart von Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            /* Minecraft-Hintergrundfarbe (Himmel) */
+            background-color: #88bce6; 
+            font-family: 'Press Start 2P', cursive; 
+            text-align: center; 
+            color: white; 
+            margin: 0;
+            padding: 0;
+            /* Bild für den "Dreck"-Block Hintergrund im Kachelmuster */
+            background-image: url('https://www.minecraft.net/content/dam/minecraft/nature/Dirt.png');
+            background-size: 128px; 
+        }
+
+        #game-wrapper {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #game-box {
+            /* Typische Minecraft UI graue Box */
+            background-color: #c6c6c6;
+            border: 4px solid #373737;
+            /* Schatten für den 3D-Look */
+            box-shadow: 10px 10px 0px rgba(0,0,0,0.5);
+            padding: 40px;
+            width: 500px;
+            position: relative;
+        }
+
+        /* Schwarzer Rand innen */
+        #game-box::before {
+            content: '';
+            position: absolute;
+            top: 5px; left: 5px; right: 5px; bottom: 5px;
+            border: 2px solid #000;
+            pointer-events: none;
+        }
+
+        #aufgabe { 
+            font-size: 2.5em; 
+            margin-bottom: 30px; 
+            color: #fff; 
+            text-shadow: 2px 2px 0 #3f3f3f;
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+        }
+
+        .btn-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .btn { 
+            /* Minecraft Button Stil */
+            background-color: #e0e0e0;
+            border-left: 4px solid #fff;
+            border-top: 4px solid #fff;
+            border-right: 4px solid #555;
+            border-bottom: 4px solid #555;
+            color: #000;
+            padding: 20px; 
+            font-family: 'Press Start 2P', cursive;
+            font-size: 1em;
+            cursor: pointer; 
+            transition: background 0.1s;
+        }
+
+        .btn:active {
+            /* Wenn gedrückt, Rahmen umkehren */
+            border-left: 4px solid #555;
+            border-top: 4px solid #555;
+            border-right: 4px solid #fff;
+            border-bottom: 4px solid #fff;
+            background-color: #c6c6c6;
+        }
+
+        #stats-bar {
+            margin-top: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border: 2px solid black;
+        }
+
+        #diamond-icon {
+            width: 40px;
+            height: 40px;
+            background-image: url('https://minecraft.wiki/images/Diamond_JE2_BE2.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            margin-right: 15px;
+        }
+
+        #gems {
+            color: #55ff55; /* Hellgrün für Score */
+            font-size: 1.5em;
+        }
+        
+        /* Modal für Feedback (richtig/falsch) */
+        #feedback-overlay {
+            display: none;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            font-size: 3em;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+
+<div id="feedback-overlay"></div>
+
+<div id="game-wrapper">
+    <div id="game-box">
+        <div id="aufgabe">? x ?</div>
+        <div class="btn-container" id="buttons">
+            <!-- Buttons werden per JS eingefügt -->
+        </div>
+        <div id="stats-bar">
+            <div id="diamond-icon"></div>
+            Diamanten: <span id="gems">0</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    let score = 0;
+    let aufgabenCount = 0;
+    // Wir nutzen ein Set für die falschen Aufgaben, damit sie nur einmal drin vorkommen,
+    // wenn sie mehrfach falsch beantwortet werden.
+    let falscheAufgabenPool = new Set(); 
+    let aktuellerModusIstWiederholung = false;
+
+    // Sound-Effekte (Minecraft-Sounds von offiziellen Wikis)
+    const soundRichtig = new Audio('https://raw.githubusercontent.com/microsoft/makecode-minecraft/master/sounds/random-orb.mp3');
+    const soundFalsch = new Audio('https://raw.githubusercontent.com/microsoft/makecode-minecraft/master/sounds/mob-enderdragon-hurt.mp3');
+    const soundLevelEnde = new Audio('https://raw.githubusercontent.com/microsoft/makecode-minecraft/master/sounds/ui-toast-challenge-complete.mp3');
+
+    function neueAufgabe() {
+        aufgabenCount++;
+
+        // Prüfen, ob das Level zu Ende ist (20 reguläre Aufgaben)
+        if (aufgabenCount > 20 && falscheAufgabenPool.size === 0) {
+            beendeLevel();
+            return;
+        }
+
+        let aufgabeObj;
+
+        // Entscheiden, ob wir eine neue Aufgabe nehmen oder eine falsche wiederholen
+        if (falscheAufgabenPool.size > 0 && Math.random() > 0.3) {
+            // 70% Chance, eine alte Aufgabe zu wiederholen, wenn welche da sind
+            aktuellerModusIstWiederholung = true;
+            // Hole ein Element aus dem Set (zufällig erstes Element)
+            let aufgabeString = falscheAufgabenPool.values().next().value;
+            let teile = aufgabeString.split(' x ');
+            aufgabeObj = { a: parseInt(teile[0]), b: parseInt(teile[1]), richtige: parseInt(teile[0]) * parseInt(teile[1]) };
+            // Entferne es aus dem Pool (wird erst bei erneutem Fehler wieder hinzugefügt)
+            falscheAufgabenPool.delete(aufgabeString); 
+        } else {
+            // Normale neue Aufgabe
+            aktuellerModusIstWiederholung = false;
+            let a = Math.floor(Math.random() * 9) + 1; // 1 bis 10
+            let b = Math.floor(Math.random() * 9) + 1; // 1 bis 10
+            aufgabeObj = { a: a, b: b, richtige: a * b };
+        }
+
+        // Anzeige aktualisieren
+        document.getElementById('aufgabe').innerText = aufgabeObj.a + " x " + aufgabeObj.b;
+
+        // Antworten generieren
+        let antworten = new Set();
+        antworten.add(aufgabeObj.richtige); // Richtige rein
+
+        while (antworten.size < 4) {
+            // Falsche Antworten generieren (im Bereich des Kleinen Einmaleins + etwas Puffer)
+            let abweichung = Math.floor(Math.random() * 6) - 3; // -3 bis +3
+            let fake = aufgabeObj.richtige + abweichung;
+            
+            // Verhindern, dass die falsche Antwort die richtige ist oder < 1
+            if(fake !== aufgabeObj.richtige && fake > 0 && fake <= 100) {
+                antworten.add(fake);
+            } else {
+                // Fallback, falls die Abweichung 0 ergibt
+                antworten.add(aufgabeObj.richtige + (Math.floor(Math.random() * 10) + 1));
+            }
+        }
+
+        // Buttons erstellen
+        let container = document.getElementById('buttons');
+        container.innerHTML = "";
+        
+        // Set in Array umwandeln und mischen
+        let antwortenArray = Array.from(antworten);
+        antwortenArray.sort(() => Math.random() - 0.5);
+
+        antwortenArray.forEach(a => {
+            let btn = document.createElement('button');
+            btn.className = 'btn';
+            btn.innerText = a;
+            btn.onclick = () => check(a, aufgabeObj);
+            container.appendChild(btn);
+        });
+    }
+
+    function zeigeFeedback(richtig) {
+        const overlay = document.getElementById('feedback-overlay');
+        if (richtig) {
+            overlay.innerText = "+10 Diamanten!";
+            overlay.style.color = "#55ff55"; // Grün
+            soundRichtig.currentTime = 0;
+            soundRichtig.play();
+        } else {
+            overlay.innerText = "Falsch! Später wiederholen.";
+            overlay.style.color = "#ff5555"; // Rot
+            soundFalsch.currentTime = 0;
+            soundFalsch.play();
+        }
+        overlay.style.display = 'flex';
+        
+        // Nach 1 Sekunde ausblenden
+        setTimeout(() => {
+            overlay.style.display = 'none';
+            neueAufgabe();
+        }, 1000);
+    }
+
+    function check(gewaehlt, aufgabeObj) {
+        // Buttons deaktivieren, damit nicht doppelt geklickt wird
+        let allBtns = document.querySelectorAll('.btn');
+        allBtns.forEach(btn => btn.onclick = null);
+
+        if (gewaehlt === aufgabeObj.richtige) {
+            score += 10;
+            // Wenn es eine Wiederholung war, wird sie nicht erneut in den Pool gelegt.
+            // Wenn es neu war und richtig ist, passiert nichts weiter.
+        } else {
+            // Falsch: Zum Pool hinzufügen (egal ob es eine Wiederholung war oder nicht)
+            falscheAufgabenPool.add(aufgabeObj.a + " x " + aufgabeObj.b);
+        }
+        
+        document.getElementById('gems').innerText = score;
+        zeigeFeedback(gewaehlt === aufgabeObj.richtige);
+    }
+
+    function beendeLevel() {
+        soundLevelEnde.play();
+        alert("Großartig! Du hast das Level beendet.\nGesammelte Diamanten: " + score + "\nKlicke auf OK um erneut zu spielen.");
+        // Reset
+        score = 0;
+        aufgabenCount = 0;
+        falscheAufgabenPool.clear();
+        document.getElementById('gems').innerText = score;
+        neueAufgabe();
+    }
+
+    // Start
+    neueAufgabe();
+</script>
+</body>
+</html>
